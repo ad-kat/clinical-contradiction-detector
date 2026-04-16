@@ -26,7 +26,7 @@ class NoteInput(BaseModel):
     text: str
     note_type: str = "Unknown"
     hadm_id: int | None = None
-    chartdate: str | None = None
+    charttime: str | None = None
 
 
 class PatientRequest(BaseModel):
@@ -57,7 +57,7 @@ def extract(note: NoteInput):
     return {
         "hadm_id": note.hadm_id,
         "note_type": note.note_type,
-        "chartdate": note.chartdate,
+        "charttime": note.charttime,
         "facts": facts
     }
 
@@ -67,7 +67,12 @@ def detect(req: PatientRequest):
     """Detect cross-encounter contradictions for a patient by subject_id."""
     with engine.connect() as conn:
         rows = conn.execute(
-            text("SELECT subject_id, hadm_id, category, text FROM noteevents WHERE subject_id = :sid"),
+            text("""
+                SELECT subject_id, hadm_id, note_type, charttime, text
+                FROM discharge_notes
+                WHERE subject_id = :sid
+                ORDER BY charttime
+            """),
             {"sid": req.subject_id}
         ).fetchall()
 
@@ -75,7 +80,13 @@ def detect(req: PatientRequest):
         raise HTTPException(status_code=404, detail=f"No notes found for subject_id {req.subject_id}")
 
     notes = [
-        {"subject_id": r.subject_id, "hadm_id": r.hadm_id, "category": r.category, "text": r.text}
+        {
+            "subject_id": r.subject_id,
+            "hadm_id": r.hadm_id,
+            "note_type": r.note_type,
+            "charttime": r.charttime,
+            "text": r.text
+        }
         for r in rows
     ]
 
@@ -90,24 +101,64 @@ def detect(req: PatientRequest):
 
 
 @app.get("/patients")
-def list_patients():
-    """List all patient subject_ids available in the database."""
+def list_patients(limit: int = 100):
+    """List patient subject_ids that have discharge notes."""
     with engine.connect() as conn:
         rows = conn.execute(
-            text("SELECT DISTINCT subject_id FROM noteevents ORDER BY subject_id")
+            text("""
+                SELECT DISTINCT subject_id 
+                FROM discharge_notes 
+                ORDER BY subject_id 
+                LIMIT :limit
+            """),
+            {"limit": limit}
         ).fetchall()
     return {"patients": [r.subject_id for r in rows]}
+
+
+@app.get("/patients/{subject_id}/notes")
+def get_patient_notes(subject_id: int):
+    """List all notes for a specific patient."""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT note_id, hadm_id, note_type, charttime
+                FROM discharge_notes
+                WHERE subject_id = :sid
+                ORDER BY charttime
+            """),
+            {"sid": subject_id}
+        ).fetchall()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"No notes found for subject_id {subject_id}")
+
+    return {
+        "subject_id": subject_id,
+        "note_count": len(rows),
+        "notes": [
+            {"note_id": r.note_id, "hadm_id": r.hadm_id,
+             "note_type": r.note_type, "charttime": r.charttime}
+            for r in rows
+        ]
+    }
 
 
 @app.get("/stats")
 def stats():
     """Database stats."""
     with engine.connect() as conn:
-        patients = conn.execute(text("SELECT COUNT(DISTINCT subject_id) FROM noteevents")).scalar()
-        notes = conn.execute(text("SELECT COUNT(*) FROM noteevents")).scalar()
-        admissions = conn.execute(text("SELECT COUNT(*) FROM admissions")).scalar()
+        patients = conn.execute(
+            text("SELECT COUNT(DISTINCT subject_id) FROM discharge_notes")).scalar()
+        notes = conn.execute(
+            text("SELECT COUNT(*) FROM discharge_notes")).scalar()
+        admissions = conn.execute(
+            text("SELECT COUNT(*) FROM admissions")).scalar()
+        prescriptions = conn.execute(
+            text("SELECT COUNT(*) FROM prescriptions")).scalar()
     return {
-        "patients": patients,
-        "notes": notes,
-        "admissions": admissions
+        "total_patients": patients,
+        "total_discharge_notes": notes,
+        "total_admissions": admissions,
+        "total_prescriptions": prescriptions
     }
