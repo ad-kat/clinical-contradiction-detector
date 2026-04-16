@@ -1,13 +1,7 @@
-"""
-LLM-based clinical fact extractor using Groq + llama-3.3-70b-versatile.
-Drop-in replacement for nlp/extractor.py — same extract_all() interface.
-"""
-
-import json
-import re
-import os
-from groq import Groq
+import time
+from groq import Groq, RateLimitError
 from dotenv import load_dotenv
+import json, re, os
 
 load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -31,41 +25,42 @@ Rules:
 - Never return null. Always return all three keys.
 """
 
-def _call_llm(note_text: str) -> dict:
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Extract facts from this note:\n\n{note_text.strip()}"}
-        ],
-        temperature=0.0,
-        max_tokens=1024,
-    )
-    raw = response.choices[0].message.content.strip()
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-    return json.loads(raw)
-
+def _call_llm(note_text: str, retries: int = 3) -> dict:
+    for attempt in range(retries):
+        try:
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": f"Extract facts from this note:\n\n{note_text.strip()}"}
+                ],
+                temperature=0.0,
+                max_tokens=1024,
+            )
+            raw = response.choices[0].message.content.strip()
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+            return json.loads(raw)
+        except RateLimitError:
+            wait = 10 * (attempt + 1)
+            print(f"[rate limit] waiting {wait}s before retry {attempt+1}/{retries}")
+            time.sleep(wait)
+        except Exception as e:
+            print(f"[llm error] {e}")
+            break
+    return {"allergies": [], "medications": [], "diagnoses": []}
 
 def extract_all(text: str) -> dict:
-    """
-    Same interface as the rule-based extractor.
-    Returns: {"allergies": [...], "medications": [...], "diagnoses": [...]}
-    """
     try:
         result = _call_llm(text)
-        # Guarantee all keys exist
         return {
             "allergies": result.get("allergies", []),
             "medications": result.get("medications", []),
             "diagnoses": result.get("diagnoses", []),
         }
-    except (json.JSONDecodeError, Exception):
-        # Fallback to empty rather than crash
+    except Exception:
         return {"allergies": [], "medications": [], "diagnoses": []}
 
-
-# Keep individual functions for backward compat
 def extract_allergies(text: str) -> list:
     return extract_all(text)["allergies"]
 

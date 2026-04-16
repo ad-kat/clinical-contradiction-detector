@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ClinicalContradiction — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --pink-bg:       #fdf0f3;
+    --pink-light:    #fce4eb;
+    --pink-mid:      #f7c5d3;
+    --pink-strong:   #e8879e;
+    --pink-accent:   #d4546f;
+    --peach:         #fdecd6;
+    --peach-mid:     #f9d4b0;
+    --lavender:      #ede8f7;
+    --lavender-mid:  #d4caf0;
+    --mint:          #e4f5ef;
+    --mint-mid:      #b8e4d4;
+    --text-dark:     #2c1a22;
+    --text-mid:      #6b3d50;
+    --text-soft:     #a07080;
+    --white:         #ffffff;
+    --shadow:        0 4px 24px rgba(180,80,110,0.10);
+    --shadow-lg:     0 8px 40px rgba(180,80,110,0.15);
+    --radius:        16px;
+    --radius-sm:     10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--pink-bg);
+    color: var(--text-dark);
+    min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse at 10% 20%, rgba(244,185,205,0.35) 0%, transparent 50%),
+      radial-gradient(ellipse at 90% 80%, rgba(212,202,240,0.30) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, rgba(253,236,214,0.20) 0%, transparent 70%);
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 36px 48px 28px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--pink-mid);
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(12px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .brand h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2rem;
+    font-weight: 600;
+    color: var(--pink-accent);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .brand p {
+    font-size: 0.78rem;
+    color: var(--text-soft);
+    margin-top: 4px;
+    font-weight: 300;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .mode-toggle {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .mode-btn {
+    padding: 8px 18px;
+    border-radius: 999px;
+    border: 1.5px solid var(--pink-mid);
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    color: var(--text-mid);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .mode-btn.active {
+    background: var(--pink-accent);
+    border-color: var(--pink-accent);
+    color: white;
+  }
+
+  .mode-btn:hover:not(.active) {
+    background: var(--pink-light);
+  }
+
+  /* ── Stats Bar ── */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    padding: 28px 48px;
+    opacity: 0;
+    transform: translateY(12px);
+    animation: fadeUp 0.5s ease 0.1s forwards;
+  }
+
+  .stat-card {
+    background: rgba(255,255,255,0.75);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    box-shadow: var(--shadow);
+    border: 1px solid rgba(255,255,255,0.9);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--pink-strong), var(--lavender-mid));
+  }
+
+  .stat-card .label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-soft);
+    font-weight: 500;
+  }
+
+  .stat-card .value {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2.2rem;
+    font-weight: 600;
+    color: var(--pink-accent);
+    line-height: 1.1;
+    margin-top: 6px;
+  }
+
+  .stat-card .sub {
+    font-size: 0.72rem;
+    color: var(--text-soft);
+    margin-top: 2px;
+  }
+
+  /* ── Main Layout ── */
+  main {
+    padding: 0 48px 48px;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 24px;
+    opacity: 0;
+    animation: fadeUp 0.5s ease 0.25s forwards;
+  }
+
+  /* ── Panel ── */
+  .panel {
+    background: rgba(255,255,255,0.75);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    border: 1px solid rgba(255,255,255,0.9);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--pink-light);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-header h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-dark);
+  }
+
+  .panel-body { padding: 20px 24px; }
+
+  /* ── Search ── */
+  .search-wrap {
+    position: relative;
+    margin-bottom: 16px;
+  }
+
+  .search-wrap input {
+    width: 100%;
+    padding: 11px 16px 11px 40px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--pink-mid);
+    background: var(--pink-bg);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.88rem;
+    color: var(--text-dark);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .search-wrap input:focus { border-color: var(--pink-accent); }
+
+  .search-wrap .icon {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-soft);
+    font-size: 0.9rem;
+  }
+
+  /* ── Patient List ── */
+  .patient-list {
+    max-height: 420px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--pink-mid) transparent;
+  }
+
+  .patient-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s;
+    margin-bottom: 4px;
+  }
+
+  .patient-item:hover { background: var(--pink-light); }
+  .patient-item.active { background: var(--pink-mid); }
+
+  .patient-item .pid {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-dark);
+  }
+
+  .patient-item .badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 500;
+  }
+
+  .badge-high { background: #fde8ec; color: #c0394f; }
+  .badge-medium { background: var(--peach); color: #b06020; }
+  .badge-none { background: var(--mint); color: #2a7a5a; }
+
+  /* ── Batch Controls ── */
+  .batch-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .batch-input {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--pink-mid);
+    background: var(--pink-bg);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.83rem;
+    color: var(--text-dark);
+    outline: none;
+    resize: vertical;
+    min-height: 80px;
+  }
+
+  .batch-input:focus { border-color: var(--pink-accent); }
+
+  /* ── Buttons ── */
+  .btn {
+    padding: 10px 20px;
+    border-radius: 999px;
+    border: none;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .btn-primary {
+    background: var(--pink-accent);
+    color: white;
+    box-shadow: 0 2px 12px rgba(212,84,111,0.3);
+  }
+
+  .btn-primary:hover {
+    background: #c04060;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(212,84,111,0.4);
+  }
+
+  .btn-secondary {
+    background: var(--pink-light);
+    color: var(--pink-accent);
+    border: 1.5px solid var(--pink-mid);
+  }
+
+  .btn-secondary:hover { background: var(--pink-mid); }
+
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* ── Results Panel ── */
+  .results-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 320px;
+    color: var(--text-soft);
+    gap: 12px;
+  }
+
+  .results-empty .icon-big { font-size: 3rem; opacity: 0.4; }
+
+  .results-empty p {
+    font-size: 0.88rem;
+    text-align: center;
+    max-width: 260px;
+    line-height: 1.6;
+  }
+
+  /* ── Patient Result Header ── */
+  .result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .result-header h3 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-dark);
+  }
+
+  .result-meta {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .meta-pill {
+    padding: 4px 14px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  .pill-pink { background: var(--pink-light); color: var(--pink-accent); }
+  .pill-lavender { background: var(--lavender); color: #6040b0; }
+  .pill-peach { background: var(--peach); color: #b06020; }
+
+  /* ── Contradiction Cards ── */
+  .contradiction-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: 520px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--pink-mid) transparent;
+    padding-right: 4px;
+  }
+
+  .contradiction-card {
+    border-radius: var(--radius-sm);
+    padding: 16px 20px;
+    border-left: 4px solid transparent;
+    background: rgba(255,255,255,0.8);
+    box-shadow: 0 2px 12px rgba(180,80,110,0.07);
+    animation: slideIn 0.3s ease forwards;
+    opacity: 0;
+  }
+
+  .contradiction-card.HIGH {
+    border-left-color: #e05070;
+    background: linear-gradient(135deg, #fff5f7 0%, #ffffff 100%);
+  }
+
+  .contradiction-card.MEDIUM {
+    border-left-color: #e09040;
+    background: linear-gradient(135deg, #fff8f0 0%, #ffffff 100%);
+  }
+
+  .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .card-type {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+
+  .type-allergy { background: #fde8ec; color: #c0394f; }
+  .type-drift { background: var(--peach); color: #b06020; }
+
+  .card-severity {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-soft);
+  }
+
+  .card-body p {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--text-mid);
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    display: flex;
+    gap: 16px;
+    font-size: 0.75rem;
+    color: var(--text-soft);
+    flex-wrap: wrap;
+  }
+
+  .card-meta span strong {
+    color: var(--text-mid);
+    font-weight: 500;
+  }
+
+  /* ── Batch Summary ── */
+  .batch-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .batch-stat {
+    background: rgba(255,255,255,0.8);
+    border-radius: var(--radius-sm);
+    padding: 14px 18px;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(180,80,110,0.07);
+  }
+
+  .batch-stat .bval {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: var(--pink-accent);
+    line-height: 1;
+  }
+
+  .batch-stat .blabel {
+    font-size: 0.7rem;
+    color: var(--text-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 4px;
+  }
+
+  .batch-patient-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.8);
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    box-shadow: 0 1px 6px rgba(180,80,110,0.06);
+  }
+
+  .batch-patient-row:hover { background: var(--pink-light); }
+
+  .batch-patient-row .bpid {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-dark);
+  }
+
+  .batch-patient-row .bpnotes {
+    font-size: 0.75rem;
+    color: var(--text-soft);
+  }
+
+  /* ── Loading ── */
+  .loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    gap: 16px;
+    color: var(--text-soft);
+    font-size: 0.85rem;
+  }
+
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--pink-light);
+    border-top-color: var(--pink-accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  /* ── Demo Banner ── */
+  .demo-banner {
+    margin: 0 48px 16px;
+    padding: 12px 20px;
+    background: var(--lavender);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--lavender-mid);
+    font-size: 0.8rem;
+    color: #5040a0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ── Animations ── */
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    header { padding: 20px 24px; }
+    .stats-bar, main { padding-left: 24px; padding-right: 24px; }
+    main { grid-template-columns: 1fr; }
+    .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .demo-banner { margin-left: 24px; margin-right: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="brand">
+    <h1>ClinicalContradiction</h1>
+    <p>EHR Inconsistency Detection System · MIMIC-IV</p>
+  </div>
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="btn-single" onclick="setMode('single')">Single Patient</button>
+    <button class="mode-btn" id="btn-batch" onclick="setMode('batch')">Batch Analysis</button>
+    <button class="mode-btn" id="btn-demo" onclick="setMode('demo')">Demo Mode</button>
+  </div>
+</header>
+
+<!-- ── Stats Bar ── -->
+<div class="stats-bar" id="stats-bar">
+  <div class="stat-card">
+    <div class="label">Total Patients</div>
+    <div class="value" id="stat-patients">—</div>
+    <div class="sub">with discharge notes</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Discharge Notes</div>
+    <div class="value" id="stat-notes">—</div>
+    <div class="sub">across all admissions</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Total Admissions</div>
+    <div class="value" id="stat-admissions">—</div>
+    <div class="sub">hospital encounters</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Prescriptions</div>
+    <div class="value" id="stat-rx">—</div>
+    <div class="sub">medication records</div>
+  </div>
+</div>
+
+<!-- ── Demo Banner ── -->
+<div class="demo-banner" id="demo-banner" style="display:none">
+  ✦ Demo mode active — using synthetic patient data only. No real MIMIC-IV data is shown.
+</div>
+
+<!-- ── Main ── -->
+<main>
+
+  <!-- Left Panel -->
+  <div class="panel" id="left-panel">
+
+    <!-- Single Mode -->
+    <div id="panel-single">
+      <div class="panel-header">
+        <h2>Patients</h2>
+        <span style="font-size:0.75rem;color:var(--text-soft)">Click to analyze</span>
+      </div>
+      <div class="panel-body">
+        <div class="search-wrap">
+          <span class="icon">⌕</span>
+          <input type="text" id="search-input" placeholder="Search patient ID..." oninput="filterPatients()"/>
+        </div>
+        <div class="patient-list" id="patient-list">
+          <div class="loading"><div class="spinner"></div><span>Loading patients…</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Batch Mode -->
+    <div id="panel-batch" style="display:none">
+      <div class="panel-header">
+        <h2>Batch Analysis</h2>
+      </div>
+      <div class="panel-body">
+        <p style="font-size:0.8rem;color:var(--text-soft);margin-bottom:10px;line-height:1.6">
+          Enter up to 20 patient IDs, one per line or comma-separated.
+        </p>
+        <textarea class="batch-input" id="batch-input" placeholder="10000032&#10;10000117&#10;10000084"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-primary" id="batch-btn" onclick="runBatch()">▶ Run Batch</button>
+          <button class="btn btn-secondary" onclick="loadSampleBatch()">Load Sample</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Demo Mode -->
+    <div id="panel-demo" style="display:none">
+      <div class="panel-header">
+        <h2>Demo Patients</h2>
+        <span style="font-size:0.75rem;color:var(--text-soft)">Synthetic data</span>
+      </div>
+      <div class="panel-body">
+        <div class="patient-list" id="demo-patient-list"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right Panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2 id="results-title">Results</h2>
+      <span id="results-sub" style="font-size:0.75rem;color:var(--text-soft)">Select a patient to begin</span>
+    </div>
+    <div class="panel-body" id="results-body">
+      <div class="results-empty">
+        <div class="icon-big">⚕</div>
+        <p>Select a patient from the left panel or run a batch analysis to detect clinical contradictions.</p>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── State ──
+let mode = 'single';
+let allPatients = [];
+let demoData = generateDemoData();
+
+// ── Mode Switch ──
+function setMode(m) {
+  mode = m;
+  ['single','batch','demo'].forEach(x => {
+    document.getElementById('btn-'+x).classList.toggle('active', x === m);
+    document.getElementById('panel-'+x).style.display = x === m ? 'block' : 'none';
+  });
+  document.getElementById('demo-banner').style.display = m === 'demo' ? 'flex' : 'none';
+  clearResults();
+  if (m === 'demo') renderDemoPatients();
+}
+
+function clearResults() {
+  document.getElementById('results-title').textContent = 'Results';
+  document.getElementById('results-sub').textContent = 'Select a patient to begin';
+  document.getElementById('results-body').innerHTML = `
+    <div class="results-empty">
+      <div class="icon-big">⚕</div>
+      <p>Select a patient from the left panel or run a batch analysis to detect clinical contradictions.</p>
+    </div>`;
+}
+
+// ── Stats ──
+async function loadStats() {
+  try {
+    const r = await fetch('/stats');
+    const d = await r.json();
+    document.getElementById('stat-patients').textContent = fmt(d.total_patients);
+    document.getElementById('stat-notes').textContent = fmt(d.total_discharge_notes);
+    document.getElementById('stat-admissions').textContent = fmt(d.total_admissions);
+    document.getElementById('stat-rx').textContent = fmt(d.total_prescriptions);
+  } catch(e) {
+    ['patients','notes','admissions','rx'].forEach(k =>
+      document.getElementById('stat-'+k).textContent = '—');
+  }
+}
+
+function fmt(n) {
+  if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n/1000).toFixed(0) + 'K';
+  return n;
+}
+
+// ── Patient List ──
+async function loadPatients() {
+  try {
+    const r = await fetch('/patients?limit=100');
+    const d = await r.json();
+    allPatients = d.patients;
+    renderPatients(allPatients);
+  } catch(e) {
+    document.getElementById('patient-list').innerHTML =
+      '<p style="color:var(--text-soft);font-size:0.82rem;padding:12px">Could not connect to API.</p>';
+  }
+}
+
+function renderPatients(list) {
+  const el = document.getElementById('patient-list');
+  if (!list.length) { el.innerHTML = '<p style="color:var(--text-soft);font-size:0.82rem">No patients found.</p>'; return; }
+  el.innerHTML = list.map(pid => `
+    <div class="patient-item" id="pi-${pid}" onclick="selectPatient(${pid})">
+      <span class="pid">ID · ${pid}</span>
+      <span class="badge badge-none" id="badge-${pid}">—</span>
+    </div>`).join('');
+}
+
+function filterPatients() {
+  const q = document.getElementById('search-input').value.trim();
+  const filtered = q ? allPatients.filter(p => String(p).includes(q)) : allPatients;
+  renderPatients(filtered);
+}
+
+// ── Single Patient ──
+async function selectPatient(pid) {
+  document.querySelectorAll('.patient-item').forEach(el => el.classList.remove('active'));
+  const el = document.getElementById('pi-'+pid);
+  if (el) el.classList.add('active');
+
+  document.getElementById('results-title').textContent = `Patient ${pid}`;
+  document.getElementById('results-sub').textContent = 'Analyzing…';
+  document.getElementById('results-body').innerHTML = '<div class="loading"><div class="spinner"></div><span>Running LLM extraction…</span></div>';
+
+  try {
+    const r = await fetch('/detect', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({subject_id: pid})
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    renderSingleResult(d, pid);
+    updateBadge(pid, d.contradictions);
+  } catch(e) {
+    document.getElementById('results-body').innerHTML =
+      `<p style="color:#c04060;font-size:0.85rem">Error: ${e.message}</p>`;
+    document.getElementById('results-sub').textContent = 'Failed';
+  }
+}
+
+function updateBadge(pid, contradictions) {
+  const badge = document.getElementById('badge-'+pid);
+  if (!badge) return;
+  const highs = contradictions.filter(c => c.severity === 'HIGH').length;
+  if (highs > 0) {
+    badge.className = 'badge badge-high';
+    badge.textContent = highs + ' HIGH';
+  } else if (contradictions.length > 0) {
+    badge.className = 'badge badge-medium';
+    badge.textContent = contradictions.length + ' MED';
+  } else {
+    badge.className = 'badge badge-none';
+    badge.textContent = '✓ Clean';
+  }
+}
+
+function renderSingleResult(d, pid) {
+  document.getElementById('results-sub').textContent =
+    `${d.notes_analyzed} notes · ${d.contradictions_found} contradictions`;
+
+  const highs = d.contradictions.filter(c => c.severity === 'HIGH').length;
+  const meds  = d.contradictions.filter(c => c.severity === 'MEDIUM').length;
+
+  let html = `
+    <div class="result-header">
+      <h3>Patient ${pid}</h3>
+      <div class="result-meta">
+        <span class="meta-pill pill-pink">${d.notes_analyzed} notes</span>
+        ${highs ? `<span class="meta-pill" style="background:#fde8ec;color:#c0394f">${highs} HIGH</span>` : ''}
+        ${meds  ? `<span class="meta-pill pill-peach">${meds} MEDIUM</span>` : ''}
+        ${!d.contradictions_found ? `<span class="meta-pill" style="background:var(--mint);color:#2a7a5a">✓ No conflicts</span>` : ''}
+      </div>
+    </div>`;
+
+  if (!d.contradictions_found) {
+    html += `<div class="results-empty" style="height:200px">
+      <div class="icon-big">✓</div>
+      <p>No contradictions detected across ${d.notes_analyzed} admission notes.</p>
+    </div>`;
+  } else {
+    html += `<div class="contradiction-list">` +
+      d.contradictions.map((c, i) => renderCard(c, i)).join('') +
+      `</div>`;
+  }
+
+  document.getElementById('results-body').innerHTML = html;
+}
+
+function renderCard(c, i) {
+  const isAllergy = c.type === 'ALLERGY_MEDICATION_CONFLICT';
+  const delay = Math.min(i * 60, 400);
+  let meta = '';
+  if (isAllergy) {
+    meta = `<span><strong>Allergy:</strong> ${c.allergy}</span>
+            <span><strong>Medication:</strong> ${c.medication}</span>
+            <span><strong>Noted in:</strong> ${c.allergy_noted_in}</span>
+            <span><strong>Prescribed in:</strong> ${c.medication_prescribed_in}</span>`;
+  } else {
+    meta = `<span><strong>Diagnosis:</strong> ${c.diagnosis}</span>
+            <span><strong>First noted:</strong> ${c.first_noted_in}</span>
+            <span><strong>Conflict in:</strong> ${c.conflict_in}</span>`;
+  }
+  return `
+    <div class="contradiction-card ${c.severity}" style="animation-delay:${delay}ms">
+      <div class="card-top">
+        <span class="card-type ${isAllergy ? 'type-allergy' : 'type-drift'}">
+          ${isAllergy ? '⚠ Allergy Conflict' : '↻ Diagnosis Drift'}
+        </span>
+        <span class="card-severity">${c.severity}</span>
+      </div>
+      <div class="card-body">
+        <p>${c.explanation}</p>
+        <div class="card-meta">${meta}</div>
+      </div>
+    </div>`;
+}
+
+// ── Batch ──
+function loadSampleBatch() {
+  document.getElementById('batch-input').value = '10000032\n10000117\n10000084';
+}
+
+async function runBatch() {
+  const raw = document.getElementById('batch-input').value;
+  const ids = raw.split(/[\n,]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+  if (!ids.length) { alert('Please enter at least one patient ID.'); return; }
+  if (ids.length > 20) { alert('Maximum 20 patients per batch.'); return; }
+
+  const btn = document.getElementById('batch-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+
+  document.getElementById('results-title').textContent = 'Batch Results';
+  document.getElementById('results-sub').textContent = `Processing ${ids.length} patients…`;
+  document.getElementById('results-body').innerHTML =
+    '<div class="loading"><div class="spinner"></div><span>Running batch analysis — this may take a moment…</span></div>';
+
+  try {
+    const r = await fetch('/batch', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({subject_ids: ids})
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    renderBatchResult(d);
+  } catch(e) {
+    document.getElementById('results-body').innerHTML =
+      `<p style="color:#c04060;font-size:0.85rem">Error: ${e.message}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Run Batch';
+  }
+}
+
+function renderBatchResult(d) {
+  const s = d.summary;
+  document.getElementById('results-sub').textContent =
+    `${s.patients_processed} patients · ${s.total_contradictions} total contradictions`;
+
+  let html = `
+    <div class="batch-summary">
+      <div class="batch-stat">
+        <div class="bval">${s.patients_with_conflicts}</div>
+        <div class="blabel">With Conflicts</div>
+      </div>
+      <div class="batch-stat">
+        <div class="bval" style="color:#c0394f">${s.high_severity}</div>
+        <div class="blabel">HIGH Severity</div>
+      </div>
+      <div class="batch-stat">
+        <div class="bval" style="color:#b06020">${s.medium_severity}</div>
+        <div class="blabel">MEDIUM Severity</div>
+      </div>
+    </div>`;
+
+  html += d.results.map(r => {
+    if (r.status === 'no_notes') return `
+      <div class="batch-patient-row">
+        <span class="bpid">Patient ${r.subject_id}</span>
+        <span class="bpnotes" style="color:var(--text-soft)">No notes found</span>
+      </div>`;
+    if (r.status === 'error') return `
+      <div class="batch-patient-row">
+        <span class="bpid">Patient ${r.subject_id}</span>
+        <span class="bpnotes" style="color:#c04060">Error</span>
+      </div>`;
+    const highs = r.contradictions.filter(c => c.severity === 'HIGH').length;
+    const badgeHtml = highs
+      ? `<span class="badge badge-high">${highs} HIGH</span>`
+      : r.contradictions_found
+        ? `<span class="badge badge-medium">${r.contradictions_found} MED</span>`
+        : `<span class="badge badge-none">✓ Clean</span>`;
+    return `
+      <div class="batch-patient-row" onclick="expandBatchPatient(this, ${JSON.stringify(r).replace(/"/g,'&quot;')})">
+        <div>
+          <div class="bpid">Patient ${r.subject_id}</div>
+          <div class="bpnotes">${r.notes_analyzed} notes analyzed</div>
+        </div>
+        ${badgeHtml}
+      </div>`;
+  }).join('');
+
+  document.getElementById('results-body').innerHTML = html;
+}
+
+function expandBatchPatient(el, data) {
+  const existing = el.nextElementSibling;
+  if (existing && existing.classList.contains('batch-expand')) {
+    existing.remove(); return;
+  }
+  const div = document.createElement('div');
+  div.className = 'batch-expand';
+  div.style.cssText = 'padding:0 8px 12px;';
+  if (!data.contradictions_found) {
+    div.innerHTML = '<p style="font-size:0.8rem;color:var(--text-soft);padding:8px 0">No contradictions detected.</p>';
+  } else {
+    div.innerHTML = `<div class="contradiction-list" style="max-height:300px;margin-top:8px">` +
+      data.contradictions.map((c,i) => renderCard(c,i)).join('') + `</div>`;
+  }
+  el.insertAdjacentElement('afterend', div);
+}
+
+// ── Demo Mode ──
+function generateDemoData() {
+  return [
+    {
+      subject_id: 'DEMO-001',
+      notes_analyzed: 3,
+      contradictions_found: 2,
+      contradictions: [
+        {
+          type: 'ALLERGY_MEDICATION_CONFLICT', severity: 'HIGH',
+          allergy: 'Penicillin', allergy_noted_in: 'ADM-001',
+          medication: 'Amoxicillin 500mg PO TID', medication_prescribed_in: 'ADM-003',
+          explanation: "'Amoxicillin 500mg PO TID' was prescribed but 'Penicillin' is listed as an allergy."
+        },
+        {
+          type: 'DIAGNOSIS_DRIFT', severity: 'MEDIUM',
+          diagnosis: 'Acute Kidney Injury', first_noted_in: 'ADM-001', conflict_in: 'ADM-002',
+          explanation: "'Acute Kidney Injury' was previously noted but appears 'resolved' in a later encounter."
+        }
+      ]
+    },
+    {
+      subject_id: 'DEMO-002',
+      notes_analyzed: 2,
+      contradictions_found: 1,
+      contradictions: [
+        {
+          type: 'DIAGNOSIS_DRIFT', severity: 'MEDIUM',
+          diagnosis: 'Pulmonary Embolism', first_noted_in: 'ADM-004', conflict_in: 'ADM-005',
+          explanation: "'Pulmonary Embolism' was previously noted but appears 'ruled out' in a later encounter."
+        }
+      ]
+    },
+    {
+      subject_id: 'DEMO-003',
+      notes_analyzed: 4,
+      contradictions_found: 0,
+      contradictions: []
+    }
+  ];
+}
+
+function renderDemoPatients() {
+  const el = document.getElementById('demo-patient-list');
+  el.innerHTML = demoData.map(p => {
+    const highs = p.contradictions.filter(c => c.severity === 'HIGH').length;
+    const badge = highs
+      ? `<span class="badge badge-high">${highs} HIGH</span>`
+      : p.contradictions_found
+        ? `<span class="badge badge-medium">${p.contradictions_found} MED</span>`
+        : `<span class="badge badge-none">✓ Clean</span>`;
+    return `
+      <div class="patient-item" onclick="selectDemoPatient('${p.subject_id}')">
+        <span class="pid">ID · ${p.subject_id}</span>
+        ${badge}
+      </div>`;
+  }).join('');
+}
+
+function selectDemoPatient(pid) {
+  const p = demoData.find(x => x.subject_id === pid);
+  if (!p) return;
+  renderSingleResult(p, pid);
+  document.getElementById('results-title').textContent = `Patient ${pid}`;
+}
+
+// ── Init ──
+loadStats();
+loadPatients();
+</script>
+</body>
+</html>
