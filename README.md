@@ -60,21 +60,41 @@ all patient data remains restricted under the DUA. This has two implications for
 
 ---
 
+
 ## Architecture
 
-Real discharge notes (MIMIC-IV, local only)
-↓
-LLM extraction — Groq/Llama-3.3-70b (medications, allergies, diagnoses as JSON)
-↓
-Contradiction detection (rule-based hard conflicts + semantic drift reasoning)
-↓
-Severity scoring (HIGH / MEDIUM)
-↓
-FastAPI REST endpoints
-↓
-PostgreSQL backend
-↓
-Dashboard (local: real data · public: demo mode only)
+```
+┌─────────────────────────────────────────────────────────┐
+│                  DATA LAYER (local only)                │
+│          MIMIC-IV discharge notes · 331K records        │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                   LLM EXTRACTION                        │
+│         Groq / Llama-3.3-70b · structured JSON          │
+│     medications  ·  allergies  ·  diagnoses             │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                 CONTRADICTION DETECTION                 │
+│      ALLERGY_MEDICATION_CONFLICT  ·  DIAGNOSIS_DRIFT    │
+│                severity: HIGH / MEDIUM                  │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                   FASTAPI BACKEND                       │
+│        PostgreSQL  ·  REST endpoints  ·  Docker         │
+└───────────────┬─────────────────────┬───────────────────┘
+                │                     │
+                ▼                     ▼
+   ┌────────────────────┐  ┌──────────────────────────┐
+   │   LOCAL DASHBOARD  │  │    PUBLIC DEMO (Render)  │
+   │  real MIMIC-IV data│  │  synthetic patients only │
+   └────────────────────┘  └──────────────────────────┘
+```
 
 ---
 

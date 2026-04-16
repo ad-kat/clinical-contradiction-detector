@@ -1,0 +1,26 @@
+# API & Server
+fastapi==0.135.3
+uvicorn==0.43.0
+starlette==1.0.0
+python-dotenv==1.2.2
+pydantic==2.12.5
+
+# Database
+SQLAlchemy==2.0.49
+psycopg2-binary==2.9.11
+
+# LLM
+groq==1.1.2
+httpx==0.28.1
+
+# Data
+pandas==3.0.2
+numpy==1.26.4
+
+# NLP
+spacy==3.7.4
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl#sha256=86cc141f63942d4b2c5fcee06630fd6f904788d2f0ab005cce45aadb8fb73889
+
+# Utilities
+requests==2.33.1
+tqdm==4.67.3
