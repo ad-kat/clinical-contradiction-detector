@@ -128,6 +128,8 @@ def root():
 
 @app.get("/health")
 def health():
+    if DEMO_MODE:
+        return {"status": "healthy", "database": "demo_mode", "demo_mode": True}
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
