@@ -235,6 +235,6 @@ Core pipeline complete and tested on real MIMIC-IV data. Actively improving:
 - [x] Diagnosis drift detection
 - [x] Batch analysis endpoint
 - [x] Web dashboard (local + demo mode)
-- [ ] Chronic condition filtering refinement
-- [ ] Severity scoring ML layer
+- [x] Chronic condition filtering refinement
+- [x] Severity scoring ML layer
 - [x] Render public demo deployment- live at https://clinical-contradiction-detector.onrender.com/dashboard

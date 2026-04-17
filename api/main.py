@@ -20,11 +20,15 @@ app = FastAPI(
     version="1.0.0"
 )
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# engine only gets used when DEMO_MODE=false (real local data)
 engine = create_engine(os.getenv("DATABASE_URL"))
 
 DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
 
-# ---- Synthetic demo data (used when DEMO_MODE=true) ----
+
+# synthetic demo patients -- used when DEMO_MODE=true (public Render deploy)
+# real MIMIC-IV data never leaves local machine
 DEMO_PATIENTS = [
     {
         "subject_id": 10001,
@@ -104,7 +108,7 @@ DEMO_PATIENTS = [
 ]
 
 
-# ---------- Models ----------
+# ---------- request models ----------
 
 class NoteInput(BaseModel):
     text: str
@@ -120,11 +124,12 @@ class BatchRequest(BaseModel):
     stop_on_first_conflict: bool = False
 
 
-# ---------- Routes ----------
+# ---------- routes ----------
 
 @app.get("/")
 def root():
     return {"status": "ok", "service": "ClinicalContradiction API"}
+
 
 @app.get("/health")
 def health():
@@ -137,9 +142,10 @@ def health():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
+
 @app.post("/extract")
 def extract(note: NoteInput):
-    """Extract clinical facts from a single note."""
+    """extract clinical facts from a single note (for testing / debugging)"""
     facts = extract_all(note.text)
     return {
         "hadm_id": note.hadm_id,
@@ -148,9 +154,10 @@ def extract(note: NoteInput):
         "facts": facts
     }
 
+
 @app.post("/detect")
 def detect(req: PatientRequest):
-    """Detect cross-encounter contradictions for a patient by subject_id."""
+    """detect cross-encounter contradictions for a patient"""
     if DEMO_MODE:
         patient = next((p for p in DEMO_PATIENTS if p["subject_id"] == req.subject_id), None)
         if not patient:
@@ -192,12 +199,13 @@ def detect(req: PatientRequest):
         "contradictions": contradictions
     }
 
+
 @app.post("/batch")
 def batch_detect(req: BatchRequest):
     """
-    Run contradiction detection across multiple patients.
-    Returns a summary per patient plus an aggregate report.
-    Caps at 20 patients to avoid Groq rate limits.
+    run contradiction detection across multiple patients.
+    capped at 20 to avoid hammering the Groq rate limit.
+    returns per-patient results + aggregate summary.
     """
     if len(req.subject_ids) > 20:
         raise HTTPException(status_code=400, detail="Batch limit is 20 patients per request.")
@@ -243,6 +251,7 @@ def batch_detect(req: BatchRequest):
 
         try:
             contradictions = detect_all_contradictions(notes)
+            # sleep between patients to stay under groq rate limit
             time.sleep(5)
         except Exception as e:
             results.append({
@@ -258,7 +267,7 @@ def batch_detect(req: BatchRequest):
         total_contradictions += len(contradictions)
         if contradictions:
             patients_with_conflicts += 1
-        high_severity += sum(1 for c in contradictions if c["severity"] == "HIGH")
+        high_severity   += sum(1 for c in contradictions if c["severity"] == "HIGH")
         medium_severity += sum(1 for c in contradictions if c["severity"] == "MEDIUM")
 
         results.append({
@@ -284,11 +293,13 @@ def batch_detect(req: BatchRequest):
         "results": results
     }
 
+
 @app.get("/patients")
 def list_patients(limit: int = 100):
-    """List patient subject_ids that have discharge notes."""
+    """list patient subject_ids that have discharge notes"""
     if DEMO_MODE:
         return {"patients": [p["subject_id"] for p in DEMO_PATIENTS], "demo_mode": True}
+
     with engine.connect() as conn:
         rows = conn.execute(
             text("""
@@ -301,32 +312,32 @@ def list_patients(limit: int = 100):
         ).fetchall()
     return {"patients": [r.subject_id for r in rows]}
 
+
 @app.get("/stats")
 def stats():
-    """Database stats."""
+    """database stats -- just row counts"""
     if DEMO_MODE:
         return {
-            "total_patients": len(DEMO_PATIENTS),
+            "total_patients":        len(DEMO_PATIENTS),
             "total_discharge_notes": sum(len(p["notes"]) for p in DEMO_PATIENTS),
-            "total_admissions": len(DEMO_PATIENTS),
-            "total_prescriptions": 0,
+            "total_admissions":      len(DEMO_PATIENTS),
+            "total_prescriptions":   0,
             "demo_mode": True
         }
+
     with engine.connect() as conn:
-        patients = conn.execute(
-            text("SELECT COUNT(DISTINCT subject_id) FROM discharge_notes")).scalar()
-        notes = conn.execute(
-            text("SELECT COUNT(*) FROM discharge_notes")).scalar()
-        admissions = conn.execute(
-            text("SELECT COUNT(*) FROM admissions")).scalar()
-        prescriptions = conn.execute(
-            text("SELECT COUNT(*) FROM prescriptions")).scalar()
+        patients      = conn.execute(text("SELECT COUNT(DISTINCT subject_id) FROM discharge_notes")).scalar()
+        notes         = conn.execute(text("SELECT COUNT(*) FROM discharge_notes")).scalar()
+        admissions    = conn.execute(text("SELECT COUNT(*) FROM admissions")).scalar()
+        prescriptions = conn.execute(text("SELECT COUNT(*) FROM prescriptions")).scalar()
+
     return {
-        "total_patients": patients,
+        "total_patients":        patients,
         "total_discharge_notes": notes,
-        "total_admissions": admissions,
-        "total_prescriptions": prescriptions
+        "total_admissions":      admissions,
+        "total_prescriptions":   prescriptions
     }
+
 
 @app.get("/dashboard")
 def dashboard():
