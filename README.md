@@ -2,6 +2,7 @@
 
 An AI system that detects cross-encounter clinical inconsistencies in longitudinal EHR data.
 Built on real MIMIC-IV data using LLM-powered fact extraction and rule-based contradiction reasoning.
+**Live demo:** https://clinical-contradiction-detector.onrender.com/dashboard
 
 ## Problem
 When patients have multiple hospital admissions, their records accumulate silent contradictions —
@@ -184,7 +185,7 @@ Navigate to `http://127.0.0.1:8000/dashboard`
 
 ## Public Demo (Render)
 
-The live demo at [clinicalcontradiction.onrender.com](#) runs in **Demo Mode only**.
+The live demo at [https://clinical-contradiction-detector.onrender.com](https://clinical-contradiction-detector.onrender.com/dashboard) runs in **Demo Mode only**.
 It uses a small set of fully synthetic patients with no connection to any real clinical data.
 This is intentional — see the DUA & HIPAA Compliance section above.
 
@@ -236,4 +237,4 @@ Core pipeline complete and tested on real MIMIC-IV data. Actively improving:
 - [x] Web dashboard (local + demo mode)
 - [ ] Chronic condition filtering refinement
 - [ ] Severity scoring ML layer
-- [ ] Render public demo deployment
+- [x] Render public demo deployment- live at https://clinical-contradiction-detector.onrender.com/dashboard
