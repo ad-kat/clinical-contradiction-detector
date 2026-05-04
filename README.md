@@ -1,7 +1,9 @@
 # ClinicalContradiction
 
 An AI system that detects cross-encounter clinical inconsistencies in longitudinal EHR data.
-Built on real MIMIC-IV data using LLM-powered fact extraction and rule-based contradiction reasoning.
+Built on real MIMIC-IV data using LLM-powered fact extraction, rule-based contradiction reasoning,
+and a fine-tuned Flan-T5 classifier trained via knowledge distillation.
+
 **Live demo:** https://clinical-contradiction-detector.onrender.com/dashboard
 
 ## Problem
@@ -16,6 +18,7 @@ These inconsistencies cause real harm and no automated system catches them at sc
   - `ALLERGY_MEDICATION_CONFLICT` (HIGH severity) — drug prescribed despite documented allergy
   - `DIAGNOSIS_DRIFT` (MEDIUM severity) — condition previously noted appears resolved/negated in later encounter
 - Flags conflicts for clinician review with structured explanations
+- **Fine-tuned Flan-T5 classifier** trained via knowledge distillation from Llama-3.3-70b on real MIMIC-IV note pairs — achieving ~15ms inference latency vs ~1000ms for the Groq API baseline (~67x speedup)
 
 ---
 
@@ -35,7 +38,7 @@ MIT Laboratory for Computational Physiology and distributed via
 
 ### Access Requirements
 MIMIC-IV is a **credentialed access** dataset. To use real data locally you must:
-1. Complete CITI training in human subjects research (Biomedical Research, Good Clinical Practice, Social & Behavioral Research)
+1. Complete CITI training in human subjects research (Data and Specimen Only Research, Biomedical Research, Good Clinical Practice, Social & Behavioral Research)
 2. Create a PhysioNet account at [physionet.org](https://physionet.org)
 3. Apply for credentialed access and upload your CITI certificates
 4. Navigate to the MIMIC-IV and MIMIC-IV-Note project pages and sign their respective Data Use Agreements
@@ -59,6 +62,10 @@ all patient data remains restricted under the DUA. This has two implications for
 > using fully synthetic patient data. Real MIMIC-IV data is only accessible locally by
 > credentialed researchers.
 
+> ⚠️ **The distillation training dataset (`contradiction_dataset.jsonl`) is not included in this repo.**
+> It contains excerpts from real MIMIC-IV discharge notes and is restricted under the same DUA.
+> Credentialed researchers can regenerate it locally using `scripts/generate_training_data.py`.
+
 ---
 
 
@@ -75,6 +82,14 @@ all patient data remains restricted under the DUA. This has two implications for
 │                   LLM EXTRACTION                        │
 │         Groq / Llama-3.3-70b · structured JSON          │
 │     medications  ·  allergies  ·  diagnoses             │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│            KNOWLEDGE DISTILLATION PIPELINE              │
+│   Teacher: Llama-3.3-70b labels 2000 note pairs         │
+│   Student: Flan-T5-small fine-tuned via LoRA (PEFT)     │
+│   Result:  ~15ms inference  ·  F1 reported on held-out  │
 └───────────────────────────┬─────────────────────────────┘
                             │
                             ▼
@@ -101,7 +116,8 @@ all patient data remains restricted under the DUA. This has two implications for
 
 ## Stack
 - **Data:** MIMIC-IV + MIMIC-IV-Note (PhysioNet, credentialed)
-- **LLM:** Groq API (Llama-3.3-70b) for structured fact extraction
+- **LLM:** Groq API (Llama-3.3-70b) — fact extraction + distillation teacher
+- **ML Model:** google/flan-t5-small fine-tuned with LoRA (PEFT, r=8) via HuggingFace Transformers
 - **Backend:** FastAPI + PostgreSQL
 - **Infrastructure:** Docker + Render.com (demo mode only)
 - **Language:** Python
@@ -183,6 +199,36 @@ Navigate to `http://127.0.0.1:8000/dashboard`
 
 ---
 
+## Distillation Pipeline (ML Training)
+
+Fine-tunes a local Flan-T5 classifier using Llama-3.3-70b as a teacher on real MIMIC-IV note pairs.
+All data stays local — no MIMIC data is uploaded anywhere.
+
+### Step 1 — Generate labeled training data
+Uses Llama-3.3-70b (Groq) to label real discharge note pairs extracted from MIMIC-IV.
+Saves 2000 labeled examples to `data/contradiction_dataset.jsonl`.
+```bash
+python scripts/generate_training_data.py
+```
+Runtime: ~45–60 min (Groq rate-limited). Requires `data/raw/discharge.csv.gz` and `admissions.csv.gz`.
+
+### Step 2 — Fine-tune Flan-T5 with LoRA
+```bash
+pip install transformers peft datasets scikit-learn accelerate torch
+python scripts/finetune_flan_t5.py
+```
+Runtime: ~2–4 hrs on CPU (flan-t5-small). Model saved to `models/flan-t5-clinical/`.
+
+Evaluation results (F1 + latency vs Llama baseline) saved to `models/flan-t5-clinical/eval_results.json`.
+
+| Metric | Flan-T5-small (LoRA) | Llama-3.3-70b (Groq API) |
+|---|---|---|
+| Inference latency | ~15 ms | ~800–1200 ms |
+| Deployment cost | Free / local | API cost per call |
+| Contradiction F1 | see eval_results.json | teacher model |
+
+---
+
 ## Public Demo (Render)
 
 The live demo at [https://clinical-contradiction-detector.onrender.com](https://clinical-contradiction-detector.onrender.com/dashboard) runs in **Demo Mode only**.
@@ -237,4 +283,6 @@ Core pipeline complete and tested on real MIMIC-IV data. Actively improving:
 - [x] Web dashboard (local + demo mode)
 - [x] Chronic condition filtering refinement
 - [x] Severity scoring ML layer
-- [x] Render public demo deployment- live at https://clinical-contradiction-detector.onrender.com/dashboard
+- [x] Render public demo deployment — live at https://clinical-contradiction-detector.onrender.com/dashboard
+- [x] Knowledge distillation pipeline (Llama → Flan-T5 via LoRA/PEFT)
+- [x] Local fine-tuned classifier with F1 + latency evaluation
