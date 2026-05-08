@@ -1,141 +1,287 @@
 """
-Generate labeled contradiction examples from real MIMIC-IV discharge notes.
-Llama is used only as a labeler, not to generate text.
-Saves to data/contradiction_dataset.jsonl
+generate_training_data.py
+
+Generates labeled contradiction training pairs from real MIMIC-IV discharge notes.
+Uses the existing rule-based extractor (nlp/extractor.py) -- NO Groq, NO API calls.
+
+Runtime: ~5-15 min for 2000 examples.
+
+Usage:
+    python scripts/generate_training_data.py
+    python scripts/generate_training_data.py --n 2000 --out data/contradiction_dataset.jsonl
+
+Requires:
+    data/raw/discharge.csv.gz
+    data/raw/admissions.csv.gz
 """
+
+import sys
+import os
+import json
+import argparse
+import random
+import re
 
 import pandas as pd
-import json, os, time, gzip, random
-from groq import Groq, RateLimitError
-from dotenv import load_dotenv
 from tqdm import tqdm
 
-load_dotenv()
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# ── make sure project root is on path so nlp/ imports work ──────────────────
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-RAW = os.path.expanduser("~/clinical-contradiction-detector/data/raw")
+from nlp.extractor import extract_allergies, extract_medications, extract_diagnoses
 
-# ── Load MIMIC data ────────────────────────────────────────────────────────
-print("Loading discharge notes...")
-notes = pd.read_csv(f"{RAW}/discharge.csv.gz", compression="gzip",
-                    usecols=["subject_id", "hadm_id", "text"])
+# ── Args ─────────────────────────────────────────────────────────────────────
+parser = argparse.ArgumentParser()
+parser.add_argument("--n",   type=int, default=2000, help="Target number of examples")
+parser.add_argument("--raw", default=os.path.expanduser("~/clinical-contradiction-detector/data/raw"))
+parser.add_argument("--out", default="data/contradiction_dataset.jsonl")
+args = parser.parse_args()
 
-print("Loading admissions...")
-admissions = pd.read_csv(f"{RAW}/admissions.csv.gz", compression="gzip",
-                         usecols=["subject_id", "hadm_id", "admittime"])
+os.makedirs(os.path.dirname(args.out), exist_ok=True)
 
-admissions["admittime"] = pd.to_datetime(admissions["admittime"])
+# ── Constants ─────────────────────────────────────────────────────────────────
+RESOLVED_KEYWORDS = [
+    "resolved", "no longer", "ruled out", "negative for",
+    "denies", "no evidence of", "without", "absent", "cleared",
+]
 
-# ── Find patients with 2+ admissions ──────────────────────────────────────
-multi = admissions.groupby("subject_id").filter(lambda x: len(x) >= 2)
-patient_ids = multi["subject_id"].unique()
-print(f"Patients with 2+ admissions: {len(patient_ids)}")
+HISTORICAL_PREFIXES = (
+    "hx of", "history of", "h/o", "past history of",
+    "prior history of", "previous history of", "pmh of",
+)
 
-# ── Extract snippet pairs from consecutive notes ───────────────────────────
-LABELER_PROMPT = """You are a clinical NLP labeler. Given two short excerpts from 
-consecutive hospital discharge notes for the same patient, detect contradictions.
-
-Return ONLY valid JSON, no markdown, no preamble:
-{
-  "contradiction": true or false,
-  "type": "allergy_medication" | "diagnosis_drift" | "none",
-  "rationale": "one sentence"
+CHRONIC_CONDITIONS = {
+    "diabetes", "hypertension", "heart failure", "copd", "asthma",
+    "atrial fibrillation", "chronic kidney disease", "ckd", "cirrhosis",
+    "hiv", "cancer", "carcinoma", "lymphoma", "epilepsy", "dementia",
+    "parkinson", "multiple sclerosis", "bipolar", "schizophrenia",
+    "rheumatoid arthritis", "lupus", "crohn", "ulcerative colitis",
+    "osteoarthritis", "osteoporosis", "hypothyroidism", "hyperthyroidism",
 }
 
-Rules:
-- allergy_medication: a drug is prescribed that the patient is allergic to
-- diagnosis_drift: a prior active diagnosis is negated/resolved without explanation  
-- none: no contradiction found
-"""
+HIGH_RISK_DRUG_CLASSES = {
+    "penicillin": ["amoxicillin", "ampicillin", "piperacillin", "nafcillin",
+                   "augmentin", "amoxicillin-clavulanate"],
+    "cephalosporin": ["cephalexin", "cefazolin", "ceftriaxone", "cefepime", "cefdinir"],
+    "sulfa": ["trimethoprim-sulfamethoxazole", "sulfamethoxazole", "bactrim"],
+    "nsaid": ["ibuprofen", "naproxen", "ketorolac", "meloxicam", "aspirin"],
+    "opioid": ["morphine", "oxycodone", "hydrocodone", "fentanyl", "codeine", "tramadol"],
+}
 
-def extract_snippet(text: str, max_chars=600) -> str:
-    """Pull ALLERGIES + MEDICATIONS section from a discharge note."""
-    text = str(text)
-    for marker in ["ALLERGIES:", "MEDICATIONS ON ADMISSION:", "DISCHARGE MEDICATIONS:"]:
+# keyword filter — only load notes with clinical substance
+FILTER_KEYWORDS = ["allerg", "medication", "diagnos", "prescribed", "penicillin",
+                   "resolved", "no longer", "ruled out"]
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def normalize(text: str) -> str:
+    return text.lower().strip()
+
+def is_historical(diagnosis: str) -> bool:
+    d = normalize(diagnosis)
+    return any(d.startswith(p) for p in HISTORICAL_PREFIXES)
+
+def is_chronic(diagnosis: str) -> bool:
+    d = normalize(diagnosis)
+    return any(c in d for c in CHRONIC_CONDITIONS)
+
+def allergy_class_conflict(allergy: str, medication: str) -> bool:
+    a = normalize(allergy).split()[0]
+    m = normalize(medication).split()[0]
+    for cls, members in HIGH_RISK_DRUG_CLASSES.items():
+        if a == cls or a in cls:
+            if any(m in mem or mem.startswith(m) for mem in members):
+                return True
+    return False
+
+def extract_snippet(text: str, max_chars: int = 500) -> str:
+    """Pull first allergy/medication section found, fallback to first 500 chars."""
+    for marker in ["ALLERGIES:", "MEDICATIONS ON ADMISSION:", "DISCHARGE MEDICATIONS:", "DIAGNOSES:"]:
         idx = text.upper().find(marker)
         if idx != -1:
-            return text[idx:idx + max_chars].strip()
-    # fallback: first 600 chars
+            return text[idx: idx + max_chars].strip()
     return text[:max_chars].strip()
 
-def label_pair(snippet1: str, snippet2: str, retries=3) -> dict:
-    prompt = f"Note 1 (earlier):\n{snippet1}\n\nNote 2 (later):\n{snippet2}"
-    for attempt in range(retries):
-        try:
-            resp = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": LABELER_PROMPT},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0,
-                max_tokens=150,
-            )
-            raw = resp.choices[0].message.content.strip().strip("```json").strip("```").strip()
-            return json.loads(raw)
-        except RateLimitError:
-            wait = 15 * (attempt + 1)
-            print(f"\n[rate limit] waiting {wait}s...")
-            time.sleep(wait)
-        except Exception as e:
-            print(f"\n[label error] {e}")
-            return None
-    return None
+def has_keywords(text: str) -> bool:
+    t = text.lower()
+    return any(k in t for k in FILTER_KEYWORDS)
 
-# ── Main loop ──────────────────────────────────────────────────────────────
-os.makedirs("data", exist_ok=True)
-out_path = "data/contradiction_dataset.jsonl"
+# ── Label a note pair using rule-based logic ──────────────────────────────────
 
-N_TARGET = 2000
-written = 0
+def label_pair(text1: str, text2: str) -> dict:
+    """
+    Returns label dict:
+      contradiction: bool
+      type: "allergy_medication" | "diagnosis_drift" | "none"
+      rationale: str
+    """
+    allergies1  = extract_allergies(text1)
+    meds2       = extract_medications(text2)
+    diagnoses1  = extract_diagnoses(text1)
+    text2_lower = text2.lower()
 
-notes_by_patient = notes.groupby("subject_id")
-adm_by_patient = admissions.sort_values("admittime").groupby("subject_id")
+    # ── Check allergy-medication conflict ─────────────────────────────────────
+    for allergy in allergies1:
+        a_key = normalize(allergy).split()[0]
+        for med in meds2:
+            m_key = normalize(med).split()[0]
+            exact = a_key in m_key or m_key in a_key
+            cls   = allergy_class_conflict(allergy, med)
+            if exact or cls:
+                return {
+                    "contradiction": True,
+                    "type": "allergy_medication",
+                    "rationale": (
+                        f"'{med}' prescribed in note 2 despite allergy to '{allergy}' in note 1."
+                        if exact else
+                        f"'{med}' is in same drug class as documented allergy '{allergy}'."
+                    ),
+                }
 
-patient_list = list(patient_ids)
-random.shuffle(patient_list)
+    # ── Check diagnosis drift ─────────────────────────────────────────────────
+    for diag in diagnoses1:
+        if is_historical(diag) or is_chronic(diag):
+            continue
+        diag_key = normalize(diag)
+        if len(diag_key) < 4:
+            continue
+        if diag_key in text2_lower:
+            for kw in RESOLVED_KEYWORDS:
+                if kw in text2_lower:
+                    # check keyword is near diagnosis mention
+                    idx_diag = text2_lower.find(diag_key)
+                    idx_kw   = text2_lower.find(kw)
+                    if abs(idx_diag - idx_kw) < 300:
+                        return {
+                            "contradiction": True,
+                            "type": "diagnosis_drift",
+                            "rationale": (
+                                f"'{diag}' noted in note 1 appears '{kw}' in note 2."
+                            ),
+                        }
 
-with open(out_path, "w") as f:
-    for pid in tqdm(patient_list, desc="Processing patients"):
-        if written >= N_TARGET:
+    # ── No contradiction ──────────────────────────────────────────────────────
+    return {
+        "contradiction": False,
+        "type": "none",
+        "rationale": "No allergy conflict or diagnosis drift detected between notes.",
+    }
+
+# ── Load MIMIC data ───────────────────────────────────────────────────────────
+print("Loading admissions...")
+admissions = pd.read_csv(
+    os.path.join(args.raw, "admissions.csv.gz"),
+    compression="gzip",
+    usecols=["subject_id", "hadm_id", "admittime"],
+)
+admissions["admittime"] = pd.to_datetime(admissions["admittime"])
+admissions = admissions.sort_values(["subject_id", "admittime"])
+
+print("Loading discharge notes (this may take ~1-2 min)...")
+notes = pd.read_csv(
+    os.path.join(args.raw, "discharge.csv.gz"),
+    compression="gzip",
+    usecols=["subject_id", "hadm_id", "text"],
+)
+
+# pre-filter: only notes with relevant clinical content
+print("Filtering notes...")
+mask  = notes["text"].apply(has_keywords)
+notes = notes[mask].copy()
+print(f"Notes after filter: {len(notes):,} / {mask.shape[0]:,}")
+
+# ── Build patient → sorted note list index ────────────────────────────────────
+print("Indexing patients...")
+notes_idx = notes.groupby("subject_id")
+adm_idx   = admissions.groupby("subject_id")
+
+# only patients with 2+ admissions AND notes
+multi_adm = admissions.groupby("subject_id").filter(lambda x: len(x) >= 2)
+patient_ids = [
+    pid for pid in multi_adm["subject_id"].unique()
+    if pid in notes_idx.groups
+]
+random.shuffle(patient_ids)
+print(f"Eligible patients: {len(patient_ids):,}")
+
+# ── Main loop ─────────────────────────────────────────────────────────────────
+written    = 0
+n_positive = 0  # track class balance
+n_negative = 0
+
+TARGET_POS = args.n // 2   # aim for ~50/50 balance
+TARGET_NEG = args.n // 2
+
+with open(args.out, "w") as f:
+    for pid in tqdm(patient_ids, desc="Processing patients"):
+        if written >= args.n:
             break
+
         try:
-            adms = adm_by_patient.get_group(pid)  # sorted by admittime
-            if len(adms) < 2:
-                continue
-            hadm_ids = adms["hadm_id"].tolist()
-            
-            # get notes for first two admissions
-            pat_notes = notes_by_patient.get_group(pid)
-            note1 = pat_notes[pat_notes["hadm_id"] == hadm_ids[0]]["text"]
-            note2 = pat_notes[pat_notes["hadm_id"] == hadm_ids[1]]["text"]
-            
-            if note1.empty or note2.empty:
-                continue
-            
-            s1 = extract_snippet(note1.iloc[0])
-            s2 = extract_snippet(note2.iloc[0])
-            
-            if len(s1) < 50 or len(s2) < 50:
-                continue
-            
-            label = label_pair(s1, s2)
-            if label is None:
-                continue
-            
-            record = {
-                "subject_id": int(pid),
-                "text_pair": [s1, s2],
-                # combined input for fine-tuning
-                "input": f"clinical contradiction detection:\nNote 1: {s1}\nNote 2: {s2}",
-                "output": f"contradiction:{label['contradiction']} type:{label['type']}",
-                "label": label
-            }
-            f.write(json.dumps(record) + "\n")
-            written += 1
-            time.sleep(0.3)  # Groq rate limit
-            
-        except Exception as e:
+            pat_adms  = adm_idx.get_group(pid).sort_values("admittime")
+            pat_notes = notes_idx.get_group(pid)
+            hadm_ids  = pat_adms["hadm_id"].tolist()
+
+            # slide a window over consecutive admission pairs
+            for i in range(len(hadm_ids) - 1):
+                if written >= args.n:
+                    break
+
+                h1 = hadm_ids[i]
+                h2 = hadm_ids[i + 1]
+
+                rows1 = pat_notes[pat_notes["hadm_id"] == h1]["text"]
+                rows2 = pat_notes[pat_notes["hadm_id"] == h2]["text"]
+
+                if rows1.empty or rows2.empty:
+                    continue
+
+                text1 = str(rows1.iloc[0])
+                text2 = str(rows2.iloc[0])
+
+                if len(text1) < 100 or len(text2) < 100:
+                    continue
+
+                label = label_pair(text1, text2)
+
+                # balance classes
+                is_pos = label["contradiction"]
+                if is_pos and n_positive >= TARGET_POS:
+                    continue
+                if not is_pos and n_negative >= TARGET_NEG:
+                    continue
+
+                snippet1 = extract_snippet(text1)
+                snippet2 = extract_snippet(text2)
+
+                record = {
+                    "subject_id": int(pid),
+                    "hadm_pair":  [int(h1), int(h2)],
+                    "input":  (
+                        f"clinical contradiction detection:\n"
+                        f"Note 1: {snippet1}\n"
+                        f"Note 2: {snippet2}"
+                    ),
+                    "output": (
+                        f"contradiction:{label['contradiction']} "
+                        f"type:{label['type']}"
+                    ),
+                    "label": label,
+                }
+
+                f.write(json.dumps(record) + "\n")
+                written += 1
+                if is_pos:
+                    n_positive += 1
+                else:
+                    n_negative += 1
+
+        except Exception:
             continue
 
-print(f"\nDone. {written} examples saved to {out_path}")
+# ── Summary ───────────────────────────────────────────────────────────────────
+print(f"\nDone.")
+print(f"Total examples : {written}")
+print(f"Positive (contradiction=True)  : {n_positive}")
+print(f"Negative (contradiction=False) : {n_negative}")
+print(f"Saved to: {args.out}")

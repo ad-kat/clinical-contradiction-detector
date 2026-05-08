@@ -69,6 +69,8 @@ with open(args.data) as f:
 print(f"Loaded {len(data)} examples")
 
 # ── Train / val split (90/10) ───────────────────────────────────────────────
+positives = [ex for ex in data if "contradiction:True" in ex["output"]]
+data = data + positives
 train_data, val_data = train_test_split(data, test_size=0.1, random_state=42)
 print(f"Train: {len(train_data)}  Val: {len(val_data)}")
 
@@ -87,12 +89,11 @@ def tokenize_batch(batch):
         padding="max_length",
     )
     # T5 labels: tokenize targets separately
-    with tokenizer.as_target_tokenizer():
-        labels = tokenizer(
-            batch["output"],
-            max_length=MAX_OUTPUT,
-            truncation=True,
-            padding="max_length",
+    labels = tokenizer(
+        text_target=batch["output"],
+        max_length=MAX_OUTPUT,
+        truncation=True,
+        padding="max_length",
         )
     # Replace padding token id with -100 so loss ignores padding
     label_ids = [
@@ -125,7 +126,7 @@ model.print_trainable_parameters()
 # ── Training args ────────────────────────────────────────────────────────────
 # CPU-safe settings: no fp16, small batch, gradient accumulation to simulate larger batch
 use_fp16 = DEVICE == "cuda"
-
+'''
 training_args = TrainingArguments(
     output_dir=args.output,
     num_train_epochs=args.epochs,
@@ -136,14 +137,33 @@ training_args = TrainingArguments(
     save_strategy="epoch",
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
-    fp16=use_fp16,
+    fp16=False,
+    bf16=False,
     logging_steps=25,
     warmup_ratio=0.1,
     weight_decay=0.01,
     report_to="none",                       # no wandb
     dataloader_num_workers=0,               # WSL2 safe
 )
+'''
 
+training_args = TrainingArguments(
+    output_dir=args.output,
+    num_train_epochs=args.epochs,
+    per_device_train_batch_size=args.batch,
+    per_device_eval_batch_size=args.batch,
+    gradient_accumulation_steps=4,
+    eval_strategy="epoch",        # was evaluation_strategy
+    save_strategy="epoch",
+    load_best_model_at_end=True,
+    metric_for_best_model="eval_loss",
+    fp16=use_fp16,
+    logging_steps=25,
+    warmup_ratio=0.1,
+    weight_decay=0.01,
+    report_to="none",
+    dataloader_num_workers=0,
+)
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model, padding=True)
 
 trainer = Trainer(
