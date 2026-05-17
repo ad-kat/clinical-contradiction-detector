@@ -1,10 +1,76 @@
-venv/
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments 
+venv/
+.venv/
+env/
+.env/
+
+# Environment variables 
 .env
+.env.local
+.env.*.local
+*.env
+
+# MIMIC-IV data — NEVER commit (DUA + HIPAA) 
 data/
 *.csv
 *.gz
 *.parquet
+data/raw/
+data/contradiction_dataset.jsonl
+data/*.csv
+data/*.csv.gz
+data/*.parquet
+data/*.jsonl
+
+# Trained models 
 models/
-*.jsonl
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+
+# Jupyter 
+.ipynb_checkpoints/
+*.ipynb
+
+# OS 
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs 
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker 
+docker-compose.override.yml
+
+# Logs 
+*.log
+logs/
+
+# PostgreSQL local
+pgdata/
+
+# Pytest / coverage 
+.pytest_cache/
+.coverage
+htmlcov/
